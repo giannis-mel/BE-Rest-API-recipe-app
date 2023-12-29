@@ -28,6 +28,22 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         return get_user_model().objects.create_user(**validated_data)
 
+    def update(self, instance, validated_data):
+        """Update and return user.
+
+        This method handles the updating of an existing user instance.
+        It allows for updating fields specified in the validated_data.
+        """
+        password = validated_data.pop('password', None)
+        user = super().update(instance, validated_data)
+
+        # If 'password' is included in the update, encrypt and save it
+        if password:
+            user.set_password(password)
+            user.save()
+
+        return user
+
 
 # Serializer that is not linked to a specific model
 class AuthTokenSerializer(serializers.Serializer):
