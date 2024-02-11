@@ -38,22 +38,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
-class TagViewSet(mixins.DestroyModelMixin,
-                 mixins.UpdateModelMixin,
-                 mixins.ListModelMixin,
-                 viewsets.GenericViewSet):
-    """
-    Manage tags in the database.
-    This class handles the creation, update, and listing of tags.
-    It uses mixins to add specific functionalities.
-    """
-
-    # Serializer class for converting Tag instances to and from JSON
-    serializer_class = serializers.TagSerializer
-
-    # The default set of records the ViewSet will operate on
-    queryset = Tag.objects.all()
-
+class BaseRecipeAttrViewSet(mixins.DestroyModelMixin,
+                            mixins.UpdateModelMixin,
+                            mixins.ListModelMixin,
+                            viewsets.GenericViewSet):
+    """Base viewset for recipe attributes."""
     # Authentication and permission classes for the ViewSet
     # TokenAuthentication: Uses token-based authentication
     # IsAuthenticated: Ensures only authenticated users access the API
@@ -69,16 +58,19 @@ class TagViewSet(mixins.DestroyModelMixin,
         return self.queryset.filter(user=self.request.user).order_by('-name')
 
 
-class IngredientViewSet(mixins.DestroyModelMixin,
-                        mixins.UpdateModelMixin,
-                        mixins.ListModelMixin,
-                        viewsets.GenericViewSet):
+class TagViewSet(BaseRecipeAttrViewSet):
+    """
+    Manage tags in the database.
+    This class handles the creation, update, and listing of tags.
+    It uses mixins to add specific functionalities.
+    """
+    # Serializer class for converting Tag instances to and from JSON
+    serializer_class = serializers.TagSerializer
+    # The default set of records the ViewSet will operate on
+    queryset = Tag.objects.all()
+
+
+class IngredientViewSet(BaseRecipeAttrViewSet):
     """Manage ingredients in the database."""
     serializer_class = serializers.IngredientSerializer
     queryset = Ingredient.objects.all()
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        """Filter queryset to authenticated user."""
-        return self.queryset.filter(user=self.request.user).order_by('-name')
