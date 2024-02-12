@@ -1,6 +1,12 @@
 """
 Views for the recipe APIs
 """
+from drf_spectacular.utils import (
+    extend_schema_view,
+    extend_schema,
+    OpenApiParameter,
+    OpenApiTypes,
+)
 from rest_framework import (
     viewsets,
     mixins,
@@ -16,6 +22,22 @@ from core.models import (
 from recipe import serializers
 
 
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                'tags',
+                OpenApiTypes.STR,
+                description='Comma separated list of tag IDs to filter',
+            ),
+            OpenApiParameter(
+                'ingredients',
+                OpenApiTypes.STR,
+                description='Comma separated list of ingredient IDs to filter',
+            ),
+        ]
+    )
+)
 class RecipeViewSet(viewsets.ModelViewSet):
     """View for manage recipe APIs."""
     serializer_class = serializers.RecipeDetailSerializer
@@ -23,9 +45,36 @@ class RecipeViewSet(viewsets.ModelViewSet):
     authentication_classes = (TokenAuthentication,)
     permission_classes = (IsAuthenticated,)
 
+    def _params_to_ints(self, qs):
+        """Convert a list of strings to integers."""
+        return [int(str_id) for str_id in qs.split(',')]
+
     def get_queryset(self):
-        """Retrieve recipes for authenticated user."""
-        return self.queryset.filter(user=self.request.user).order_by('-id')
+        """
+        Retrieve recipes for the authenticated user, with optional filtering
+        by tags and ingredients.
+        """
+
+        # Retrieve query parameters for 'tags' and 'ingredients' from the request
+        tags = self.request.query_params.get('tags')
+        ingredients = self.request.query_params.get('ingredients')
+
+        # Start with the default queryset (all recipes)
+        queryset = self.queryset
+
+        # If 'tags' parameter is provided, filter the queryset by those tags
+        if tags:
+            tag_ids = self._params_to_ints(tags)  # Convert 'tags' to a list of integers
+            queryset = queryset.filter(tags__id__in=tag_ids)  # Filter by tag IDs
+
+        # If 'ingredients' parameter is provided, do the same for ingredients
+        if ingredients:
+            ingredient_ids = self._params_to_ints(ingredients)  # Convert 'ingredients' to a list of integers
+            queryset = queryset.filter(ingredients__id__in=ingredient_ids)  # Filter by ingredient IDs
+
+        # Finally, filter the queryset to only include recipes of the authenticated user
+        # Order by descending ID and remove duplicates
+        return queryset.filter(user=self.request.user).order_by('-id').distinct()
 
     def get_serializer_class(self):
         """Return the serializer class for request."""
@@ -38,6 +87,17 @@ class RecipeViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                'assigned_only',
+                OpenApiTypes.INT, enum=[0, 1],
+                description='Filter by items assigned to recipes.',
+            ),
+        ]
+    )
+)
 class BaseRecipeAttrViewSet(mixins.DestroyModelMixin,
                             mixins.UpdateModelMixin,
                             mixins.ListModelMixin,
@@ -55,7 +115,28 @@ class BaseRecipeAttrViewSet(mixins.DestroyModelMixin,
         This method overrides the default queryset to return only the tags
         that belong to the currently authenticated user, ordered by name.
         """
-        return self.queryset.filter(user=self.request.user).order_by('-name')
+
+        # Retrieve the 'assigned_only' parameter from the request's query parameters.
+        # If 'assigned_only' is not provided, it defaults to 0 (False).
+        # Convert the parameter to an integer, and then to a boolean.
+        assigned_only = bool(
+            int(self.request.query_params.get('assigned_only', 0))
+        )
+
+        # Start with the default queryset as defined in the viewset.
+        queryset = self.queryset
+
+        # If 'assigned_only' is True, modify the queryset to include only those
+        # tags that are assigned to a recipe (i.e., filter out tags not assigned to any recipe).
+        if assigned_only:
+            queryset = queryset.filter(recipe__isnull=False)
+
+        # Further filter the queryset to include only tags that belong to the
+        # currently authenticated user. Then order the results by the tag name
+        # in descending order and remove any duplicates.
+        return queryset.filter(
+            user=self.request.user
+        ).order_by('-name').distinct()
 
 
 class TagViewSet(BaseRecipeAttrViewSet):
